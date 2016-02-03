@@ -1,0 +1,35 @@
+# This is one of two config files for blockip
+
+# blockip.static should not be edited, it is updated by the package
+# blockip.conf is for local edits
+
+# This is blockip.static, you probably don't want to edit this.
+
+# These addresses may not be blocked. Hard-coded into
+# the script is the Posi UK address range, rfc1918 and
+# loopback addresses.
+
+[whitelist]
+103.21.244.0/22 = CloudFlare
+103.22.200.0/22 = CloudFlare
+103.31.4.0/22 = CloudFlare
+104.16.0.0/12 = CloudFlare
+108.162.192.0/18 = CloudFlare
+141.101.64.0/18 = CloudFlare
+162.158.0.0/15 = CloudFlare
+172.64.0.0/13 = CloudFlare
+173.245.48.0/20 = CloudFlare
+188.114.96.0/20 = CloudFlare
+190.93.240.0/20 = CloudFlare
+197.234.240.0/22 = CloudFlare
+198.41.128.0/17 = CloudFlare
+199.27.128.0/21 = CloudFlare
+
+# If someone tries to block an address listed here, they
+# will be told of its presence on this list when they're
+# prompted to confirm its blocking. For search engines and
+# the like which you might not want to block.
+
+[confirm-first]
+google.com = Google Bot
+googlebot.com = Google Bot

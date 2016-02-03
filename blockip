@@ -1,0 +1,322 @@
+#! /usr/bin/perl
+
+use strict;
+
+use Sys::Syslog;
+use Data::Dumper;
+use Getopt::Long;
+use Socket;
+use Sys::Syslog qw(:standard :macros);
+
+use Net::Subnet;  # libnet-subnet-perl
+use Config::Tiny;  # libconfig-tiny-perl 
+
+my $command_line = join(" ", $0, @ARGV);
+
+# This is the package-supplied one
+my $f_config = '/etc/blockip/blockip.static';
+# This is the home-made one
+my $f_local_config = '/etc/blockip/blockip.conf';
+my $help;
+my ($unblock,$noprompt,$debug,$iptables) = undef;
+
+GetOptions(
+	"config-file=s" => \$f_config,
+	"debug"         => \$debug,
+	"help|h"        => \$help,
+	"iptables"      => \$iptables,
+	"no-prompt"     => \$noprompt,
+	"unblock"       => \$unblock,
+) or die ("Error parsing command-line options");
+
+if($help){
+	usage();
+	exit;
+}
+
+openlog("blockip", "nofatal,pid", LOG_DAEMON);
+my $ip_address = shift;
+syslog("INFO", "Command line: $command_line");
+
+_debug("Config file: $f_config");
+my $config;
+if($f_config eq '' || ! -f $f_config){
+	print "No config file, carrying on with defaults\n";
+	$config = {};
+}else{
+	$config = Config::Tiny->read( $f_config ) or die ("Error reading config file '$f_config' : ".Config::Tiny->errstr);
+}
+my $local_config = {};
+_debug("Local config file: $f_config");
+if(-f $f_local_config){
+	$local_config = Config::Tiny->read( $f_local_config ) or die ("Error reading config file '$f_local_config' : ".Config::Tiny->errstr);
+}
+
+# If we're passed --iptables, then the block_command is overriden to an 
+# iptables invocation.
+if($iptables){
+	$config->{'_'}->{'block_command'}   = 'iptables -A INPUT -s %ip_address% -j DROP';
+	$config->{'_'}->{'unblock_command'} = 'iptables -D INPUT -s %ip_address% -j DROP';
+}
+
+if($unblock){
+	syslog("INFO", "Unblocking '$ip_address'");
+	unblock_address($ip_address);
+	exit;
+}
+
+# Get together some lists of addresses to refuse to block:
+# Whitelists from the config file:
+my $whitelist     = resolve_whitelist($config->{'whitelist'});
+my $confirm_first = resolve_whitelist($config->{'confirm-first'});
+my $local_whitelist     = resolve_whitelist($local_config->{'whitelist'});
+my $local_confirm_first = resolve_whitelist($local_config->{'confirm-first'});
+
+# Some hardcoded ranges:
+my $posinet = subnet_matcher qw(80.87.128.0/20);
+my $rfc1918 = subnet_matcher qw(10.0.0.0/8 172.16.0.0/12 192.168.0.0/16);
+my $loopback = subnet_matcher qw(127.0.0.0/8);
+my $posinet_usa = subnet_matcher( qw( 216.116.61.0/24 216.116.62.0/24 216.116.63.0/24 216.116.64.0/24 216.116.65.0/24 216.116.66.0/24 216.116.67.0/24 216.116.68.0/24 216.116.69.0/24) );
+# Abort if the address we've been asked to block is whitelisted:
+if(my $message = check_whitelists($ip_address)){
+	syslog("INFO", "Refusing to block '$ip_address'");
+	_error($message);
+}
+
+my $ptr = gethostbyaddr(inet_aton($ip_address), AF_INET);
+syslog("INFO", "PTR: $ptr");
+
+# We now prompt the user to make sure they do want to block this address; 
+# perhaps its presence on the confirm-first address, or the content of its
+# PTR address, will make them reconsider. We skip this if --no-prompt has
+# been passed:
+
+my $input;
+if($noprompt){
+	$input = "Y";
+}else{
+	print "PTR is $ptr\n";
+	if($local_confirm_first->{$ip_address}){
+		print "Address is listed as '".$local_confirm_first->{$ip_address}."'\n"
+	}elsif($confirm_first->{$ip_address}){
+		print "Address is listed as '".$confirm_first->{$ip_address}."'\n";
+	};
+	print "Are you sure you want to block this address? [Y/n] ";
+	$input = <STDIN>;
+}
+
+unless($input =~ m/^y$/i){
+	print "Aborting\n";
+	exit;
+}
+
+# Block the address:
+syslog("INFO", "Blocking '$ip_address'");
+block_address($ip_address);
+syslog("INFO", "Exiting");
+# # #
+# #
+#
+
+sub block_address{
+	my $ip_address = shift;
+	my $cmd;
+	if($cmd = $config->{'_'}->{'block_command'}){
+		$cmd =~ s/%ip_address%/$ip_address/;
+	}else{
+		$cmd = "shorewall drop $ip_address";
+	}
+	_debug("Block command: $cmd");
+	syslog("INFO", "Block command: '$cmd'");
+	my $output = `$cmd 2>&1`;
+	if($? != 0){
+		syslog("INFO", "FAILED. Aborting");
+		print "Command ($cmd) FAILED\n";
+		print $output;
+	}
+	syslog("INFO", "Exited: $?");
+}
+
+sub unblock_address{
+	my $ip_address = shift;
+	my $cmd;
+	if($cmd = $config->{'_'}->{'unblock_command'}){
+		$cmd =~ s/%ip_address%/$ip_address/;
+	}else{
+		$cmd = "shorewall allow $ip_address";
+	}
+	syslog("INFO", "Unblock command: '$cmd'");
+	_debug("Unblock command: $cmd");
+	my $output = `$cmd 2>&1`;
+	if($? != 0){
+		syslog("INFO", "FAILED. Aborting");
+		print "Command ($cmd) FAILED\n";
+		print $output;
+	}
+	syslog("INFO", "Exited: $?");
+}
+
+# Is passed an IP address, checks all the whitelists for its presence. 
+sub check_whitelists{
+	my $ip_address = shift;
+
+	if($ip_address eq ""){
+		return ("You didn't specify an IP address. Perhaps see --help output?");
+	}
+
+	unless($ip_address =~ m/(\d+)\.(\d+)\.(\d+)\.(\d+)/){
+		return("'$ip_address' does not look like a valid IP address; needs to be four octets. (try with --help?)");
+	}
+	unless($1 <= 256 && $2 <= 256 && $3 <= 256 && $4 <= 256){
+		return("'$ip_address' does not look like a valid IP address; no octet may be greater than 256");
+	}
+	
+	if($posinet->($ip_address)){
+		return("$ip_address is a Positive Internet address. Do not block it.");
+	}
+
+	if($posinet_usa->($ip_address)){
+		return("$ip_address is a Positive Internet USA address. Do not block it.");
+	}
+	
+	if($rfc1918->($ip_address)){
+		return("$ip_address is an RFC1918 (private, not-routable) address. Do not block it.");
+	}
+	
+	if($loopback->($ip_address)){
+		return("$ip_address is a loopback address. Do not block it.");
+	}
+
+	foreach my $reason (keys(%{$local_whitelist})){
+		_debug ("Subnet matching $reason: ". join(",", @{$local_whitelist->{$reason}}));
+		my $networks = subnet_matcher(@{$local_whitelist->{$reason}}); 
+		if($networks->($ip_address)){
+			return "$ip_address is whitelisted, as '$reason'";
+		}
+	}
+
+	foreach my $reason (keys(%{$whitelist})){
+		_debug ("Subnet matching $reason: ". join(",", @{$whitelist->{$reason}}));
+		my $networks = subnet_matcher(@{$whitelist->{$reason}}); 
+		if($networks->($ip_address)){
+			return "$ip_address is whitelisted, as '$reason'";
+		}
+	}
+
+
+	return undef;
+}
+
+# Takes a whitelist as returned by the config (a hashref, with IP 
+# addresses/CIDR masks as keys, reasons as values) and returns as 
+# a hashref with reasons as keys and an arrayref of IP addresses/
+# CIDR masks as values. 
+sub resolve_whitelist{
+	my $whitelist = shift;
+	my $return;
+	foreach my $ip_address (keys(%{$whitelist})){
+		my $reason = $whitelist->{$ip_address};
+		next if ($ip_address =~ m/^\d+\.\d+\.\d+\.\d+/);
+		_debug("Resolving whitelisted domain '$ip_address'");
+		my @addresses = gethostbyname($ip_address);
+		@addresses = map { inet_ntoa($_) } @addresses[ 4 .. $#addresses ];
+		foreach my $record ( @addresses ) {
+			$whitelist->{$record} = $reason;
+		}
+		delete($whitelist->{$ip_address});
+	}
+	foreach my $ip_address (keys(%{$whitelist})){
+		my $reason = $whitelist->{$ip_address};
+		$ip_address.="/32" unless $ip_address =~ m/\/\d+$/;
+		push(@{$return->{$reason}}, $ip_address);
+	}
+	return $return;
+}
+
+sub _error{
+	my $message = shift;
+	chomp($message);
+	print STDERR $message, "\n";
+	exit 1;
+}
+
+sub _debug{
+	return unless $debug;
+	my $message = shift;
+	chomp($message);
+	print STDERR $message, "\n";
+}
+
+sub usage{
+print <<"EOF";
+blockip
+
+   Safely prevents hosts reaching this machine. 
+
+usage:
+
+   blockip <options> host
+
+Options:
+
+    --config-file <file>    use <file> as config file. Default: $f_config 
+    --debug                 print debugging output
+    --help                  see this help
+    --iptables              use iptables (rather than shorewall)
+    --config-help           see config file help
+    --no-prompt             don't prompt for confirmation (for scripts)
+    --unblock               unblock IP address
+
+The unblocking may not work; it assumes that the IP address has been blocked
+in the same way as blockip is configured to (see 'block_command' and 
+'unblock_command' in the config-help).
+
+EOF
+exit
+}
+
+sub config_help{
+print STDOUT << "EOF";
+blockip has two configuration files. blockip.static is provided by the 
+package manager, and should not be edited by anybody else. It contains just a 
+whitelist and confirm-first list.
+blockip.conf is for normal human consumption, and may contain all config 
+options. 
+
+You can print an example config file with --example-config.
+EOF
+}
+
+sub example_config{
+print STDOUT << "EOF";
+# block_command and unblock_command are executed when blocking and unblocking 
+# an address, respectively. The default is to use `shorewall drop` and 
+# `shorewall allow`
+# There is one available variable, %ip_address%, which is the address to be 
+# blocked or re-permitted:
+
+#block_command = route add %ip_address% gw 127.0.0.1 lo
+#unblock_command = route del %ip_address% gw 127.0.0.1 lo
+
+# The whitelist and confirm-before list must come *after* any other directives.
+#
+# Each is a list of elements of the form
+#
+# <address> = <name>
+#
+# Where <address> may be an IP address, a network in CIDR notation, or a DNS 
+# name. The 'name' is simply a string used to tell a user why they ought not 
+# delete this address.
+
+# Whitelisted addresses may not be blocked. More are hardcoded into the script.
+[whitelist]
+217.207.137.131 = Avi's PC
+
+# Confirm-first addresses may be blocked, but the user will first be prompted
+# with the label given here, in case that makes them change their mind. They
+# are intended for things like search engine bots.
+[confirm-first]
+googlebot.com = Google Bot
+
+EOF
+}
