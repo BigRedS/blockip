@@ -85,26 +85,21 @@ if(my $message = check_whitelists($ip_address)){
 	_error($message);
 }
 
-my $ptr = gethostbyaddr(inet_aton($ip_address), AF_INET);
-syslog("INFO", "PTR: $ptr");
-
 # We now prompt the user to make sure they do want to block this address; 
-# perhaps its presence on the confirm-first address, or the content of its
-# PTR address, will make them reconsider. We skip this if --no-prompt has
-# been passed:
+# if it is on the confirm-first list
 
 my $input;
-if($noprompt){
-	$input = "Y";
-}else{
-	print "PTR is $ptr\n";
+
+if( ($local_confirm_first->{$ip_address} or $local_confirm_first->{$ip_address}) and !$noprompt){
 	if($local_confirm_first->{$ip_address}){
-		print "Address is listed as '".$local_confirm_first->{$ip_address}."'\n"
+		print "Address is listed as '".$local_confirm_first->{$ip_address}." in $f_local_config'\n"
 	}elsif($confirm_first->{$ip_address}){
 		print "Address is listed as '".$confirm_first->{$ip_address}."'\n";
 	};
 	print "Are you sure you want to block this address? [Y/n] ";
 	$input = <STDIN>;
+}else{
+	$input = "y";
 }
 
 unless($input =~ m/^y$/i){
@@ -181,14 +176,6 @@ sub check_whitelists{
 	}
 	unless($1 <= 256 && $2 <= 256 && $3 <= 256 && $4 <= 256){
 		return("'$ip_address' does not look like a valid IP address; no octet may be greater than 256");
-	}
-	
-	if($posinet->($ip_address)){
-		return("$ip_address is a Positive Internet address. Do not block it.");
-	}
-
-	if($posinet_usa->($ip_address)){
-		return("$ip_address is a Positive Internet USA address. Do not block it.");
 	}
 	
 	if($rfc1918->($ip_address)){
