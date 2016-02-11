@@ -18,11 +18,12 @@ my $f_config = '/etc/blockip/blockip.static';
 # This is the home-made one
 my $f_local_config = '/etc/blockip/blockip.conf';
 my $help;
-my ($unblock,$noprompt,$debug,$iptables) = undef;
+my ($unblock,$noprompt,$debug,$iptables,$dry_run) = undef;
 
 GetOptions(
 	"config-file=s" => \$f_config,
 	"debug"         => \$debug,
+	"dry-run|d"     => \$dry_run,
 	"help|h"        => \$help,
 	"iptables"      => \$iptables,
 	"no-prompt"     => \$noprompt,
@@ -128,6 +129,11 @@ sub block_address{
 	}
 	_debug("Block command: $cmd");
 	syslog("INFO", "Block command: '$cmd'");
+	if($dry_run){
+		syslog("INFO", "Called with dry-run, exiting without blocking");
+		print "Called with dry-run, exiting without blocking\n";
+		return;
+	}
 	my $output = `$cmd 2>&1`;
 	if($? != 0){
 		syslog("INFO", "FAILED. Aborting");
@@ -147,6 +153,11 @@ sub unblock_address{
 	}
 	syslog("INFO", "Unblock command: '$cmd'");
 	_debug("Unblock command: $cmd");
+	if($dry_run){
+		syslog("INFO", "Called with dry-run, exiting without unblocking");
+		print "Called with dry-run, exiting without unblocking\n";
+		return;
+	}
 	my $output = `$cmd 2>&1`;
 	if($? != 0){
 		syslog("INFO", "FAILED. Aborting");
@@ -261,6 +272,7 @@ Options:
 
     --config-file <file>    use <file> as config file. Default: $f_config 
     --debug                 print debugging output
+    --dry-run               run through all the checks, but don't (un)block
     --help                  see this help
     --iptables              use iptables (rather than shorewall)
     --config-help           see config file help
