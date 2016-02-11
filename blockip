@@ -20,12 +20,13 @@ my $f_config = '/etc/blockip/blockip.static';
 # This is the home-made one
 my $f_local_config = '/etc/blockip/blockip.conf';
 my $help;
-my ($unblock,$noprompt,$debug,$iptables,$dry_run) = undef;
+my ($unblock,$noprompt,$debug,$iptables,$dry_run,$config_help,$example_config) = undef;
 
 GetOptions(
 	"config-file=s" => \$f_config,
 	"debug"         => \$debug,
 	"dry-run|d"     => \$dry_run,
+	"example-config"=> \$example_config,
 	"help|h"        => \$help,
 	"iptables"      => \$iptables,
 	"no-prompt"     => \$noprompt,
@@ -34,6 +35,10 @@ GetOptions(
 
 if($help){
 	usage();
+	exit;
+}
+if($example_config){
+	example_config();
 	exit;
 }
 
@@ -264,6 +269,7 @@ Options:
     --config-file <file>    use <file> as config file. Default: $f_config 
     --debug                 print debugging output
     --dry-run               run through all the checks, but don't (un)block
+    --example-config        print out an example blockip.conf
     --help                  see this help
     --iptables              use iptables (rather than shorewall)
     --config-help           see config file help
@@ -272,21 +278,18 @@ Options:
 
 The unblocking may not work; it assumes that the IP address has been blocked
 in the same way as blockip is configured to (see 'block_command' and 
-'unblock_command' in the config-help).
+'unblock_command' in the config file).
 
-EOF
-exit
-}
 
-sub config_help{
-print STDOUT << "EOF";
 blockip has two configuration files. blockip.static is provided by the 
 package manager, and should not be edited by anybody else. It contains just a 
 whitelist and confirm-first list.
-blockip.conf is for normal human consumption, and may contain all config 
-options. 
 
-You can print an example config file with --example-config.
+blockip.conf is for normal human consumption, and may contain all config 
+options. It is created on package installation. You can recreate it with
+
+blockip --example-config > /etc/blockip/blockip.conf
+
 EOF
 }
 
@@ -311,9 +314,11 @@ print STDOUT << "EOF";
 # name. The 'name' is simply a string used to tell a user why they ought not 
 # delete this address.
 
-# Whitelisted addresses may not be blocked. More are hardcoded into the script.
-[whitelist]
-217.207.137.131 = Avi's PC
+# Whitelisted addresses may not be blocked. RFC1918 and loopback ones are 
+# hardcoded into the script/
+#  [whitelist]
+#  example.com = Example domain
+#  1.2.3.4 = Example address
 
 # Confirm-first addresses may be blocked, but the user will first be prompted
 # with the label given here, in case that makes them change their mind. They
