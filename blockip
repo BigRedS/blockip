@@ -75,11 +75,10 @@ my $confirm_first = resolve_whitelist($config->{'confirm-first'});
 my $local_whitelist     = resolve_whitelist($local_config->{'whitelist'});
 my $local_confirm_first = resolve_whitelist($local_config->{'confirm-first'});
 
-# Some hardcoded ranges:
-my $posinet = subnet_matcher qw(80.87.128.0/20);
+# Never block loopback or private addresses
 my $rfc1918 = subnet_matcher qw(10.0.0.0/8 172.16.0.0/12 192.168.0.0/16);
 my $loopback = subnet_matcher qw(127.0.0.0/8);
-my $posinet_usa = subnet_matcher( qw( 216.116.61.0/24 216.116.62.0/24 216.116.63.0/24 216.116.64.0/24 216.116.65.0/24 216.116.66.0/24 216.116.67.0/24 216.116.68.0/24 216.116.69.0/24) );
+
 # Abort if the address we've been asked to block is whitelisted:
 if(my $message = check_whitelists($ip_address)){
 	syslog("INFO", "Refusing to block '$ip_address'");
