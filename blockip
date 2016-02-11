@@ -7,7 +7,7 @@ no warnings;
 use Sys::Syslog;
 use Data::Dumper;
 use Getopt::Long;
-use Socket qw( AF_INET inet_aton);
+use Socket qw( inet_ntoa );
 use Sys::Syslog qw(:standard :macros);
 
 use Net::Subnet;  # libnet-subnet-perl
