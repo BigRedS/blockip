@@ -7,7 +7,7 @@ no warnings;
 use Sys::Syslog;
 use Data::Dumper;
 use Getopt::Long;
-use Socket qw( AF_INET inet_aton );
+use Socket qw( AF_INET inet_aton);
 use Sys::Syslog qw(:standard :macros);
 
 use Net::Subnet;  # libnet-subnet-perl
@@ -128,6 +128,7 @@ sub block_address{
 	if($dry_run){
 		syslog("INFO", "Called with dry-run, exiting without blocking");
 		print "Called with dry-run, exiting without blocking\n";
+		print "Would have executed:\n $cmd\n";
 		return;
 	}
 	my $output = `$cmd 2>&1`;
@@ -152,6 +153,8 @@ sub unblock_address{
 	if($dry_run){
 		syslog("INFO", "Called with dry-run, exiting without unblocking");
 		print "Called with dry-run, exiting without unblocking\n";
+		print "Would have executed:\n $cmd\n";
+
 		return;
 	}
 	my $output = `$cmd 2>&1`;
