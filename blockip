@@ -16,9 +16,20 @@ use Config::Tiny;  # libconfig-tiny-perl
 my $command_line = join(" ", $0, @ARGV);
 
 # This is the package-supplied one
-my $f_config = '/etc/blockip/blockip.static';
+my $f_config;
+if(-f './blockip.static'){
+	$f_config = './blockip.static';
+}else{
+	$f_config = '/etc/blockip/blockip.static';
+}
 # This is the home-made one
-my $f_local_config = '/etc/blockip/blockip.conf';
+my $f_local_config;
+if(-f './blockip.conf'){
+	$f_local_config = './blockip.conf';
+}else{
+	$f_local_config = '/etc/blockip/blockip.conf';
+}
+
 my $help;
 my ($unblock,$noprompt,$debug,$iptables,$dry_run,$config_help,$example_config) = undef;
 
