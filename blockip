@@ -126,7 +126,7 @@ sub block_address{
 	if($cmd = $config->{'_'}->{'block_command'}){
 		$cmd =~ s/%ip_address%/$ip_address/;
 	}else{
-		$cmd = "shorewall drop $ip_address";
+		$cmd = "ip route add blackhole $ip_address";
 	}
 	_debug("Block command: $cmd");
 	syslog("INFO", "Block command: '$cmd'");
@@ -151,7 +151,7 @@ sub unblock_address{
 	if($cmd = $config->{'_'}->{'unblock_command'}){
 		$cmd =~ s/%ip_address%/$ip_address/;
 	}else{
-		$cmd = "shorewall allow $ip_address";
+		$cmd = "ip route del blackhole $ip_address";
 	}
 	syslog("INFO", "Unblock command: '$cmd'");
 	_debug("Unblock command: $cmd");
@@ -271,7 +271,7 @@ Options:
     --dry-run               run through all the checks, but don't (un)block
     --example-config        print out an example blockip.conf
     --help                  see this help
-    --iptables              use iptables (rather than shorewall)
+    --iptables              use iptables for block/unblock (overrides config file)
     --config-help           see config file help
     --no-prompt             don't prompt for confirmation (for scripts)
     --unblock               unblock IP address
@@ -296,13 +296,13 @@ EOF
 sub example_config{
 print STDOUT << "EOF";
 # block_command and unblock_command are executed when blocking and unblocking 
-# an address, respectively. The default is to use `shorewall drop` and 
-# `shorewall allow`
+# an address, respectively. The default is to use `ip route add blackhole` and 
+# `ip route del blackhole`
 # There is one available variable, %ip_address%, which is the address to be 
 # blocked or re-permitted:
 
-#block_command = route add %ip_address% gw 127.0.0.1 lo
-#unblock_command = route del %ip_address% gw 127.0.0.1 lo
+#block_command = ip route add blackhole %ip_address%
+#unblock_command = ip route del blackhole %ip_address%
 
 # The whitelist and confirm-before list must come *after* any other directives.
 #
