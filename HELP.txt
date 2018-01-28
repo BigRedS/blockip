@@ -1,0 +1,34 @@
+blockip
+
+   Safely prevents hosts reaching this machine. 
+
+usage:
+
+   blockip <options> host
+
+Options:
+
+    --config-file <file>    use <file> as config file. Default: ./blockip.static 
+    --debug                 print debugging output
+    --dry-run               run through all the checks, but don't (un)block
+    --example-config        print out an example blockip.conf
+    --help                  see this help
+    --iptables              use iptables for block/unblock (overrides config file)
+    --config-help           see config file help
+    --no-prompt             don't prompt for confirmation (for scripts)
+    --unblock               unblock IP address
+
+The unblocking may not work; it assumes that the IP address has been blocked
+in the same way as blockip is configured to (see 'block_command' and 
+'unblock_command' in the config file).
+
+
+blockip has two configuration files. blockip.static is provided by the 
+package manager, and should not be edited by anybody else. It contains just a 
+whitelist and confirm-first list.
+
+blockip.conf is for normal human consumption, and may contain all config 
+options. It is created on package installation. You can recreate it with
+
+blockip --example-config > /etc/blockip/blockip.conf
+
