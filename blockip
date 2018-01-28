@@ -106,21 +106,15 @@ if(my $message = check_whitelists($ip_address)){
 
 my $input;
 
-if( ($local_confirm_first->{$ip_address} or $local_confirm_first->{$ip_address}) and !$noprompt){
-	if($local_confirm_first->{$ip_address}){
-		print "Address is listed as '".$local_confirm_first->{$ip_address}." in $f_local_config'\n"
-	}elsif($confirm_first->{$ip_address}){
-		print "Address is listed as '".$confirm_first->{$ip_address}."'\n";
-	};
+if(my ($reason,$file) = check_confirm_firsts($ip_address)){
+	print "Address '$ip_address' is listed as confirm-first in $file\n";
+	print "Reason given:\n  $reason\n\n";
 	print "Are you sure you want to block this address? [Y/n] ";
 	$input = <STDIN>;
-}else{
-	$input = "y";
-}
-
-unless($input =~ m/^y$/i){
-	print "Aborting\n";
-	exit;
+	unless($input =~ m/^y$/i){
+		print "Aborting\n";
+		exit;
+	}
 }
 
 # Block the address:
@@ -224,6 +218,27 @@ sub check_whitelists{
 
 	return undef;
 }
+
+sub check_confirm_firsts{
+	my $ip_address = shift;
+	foreach my $reason (keys(%{$local_confirm_first})){
+		_debug ("Subnet matching local confirm-first $reason: ".join("," , @{$local_confirm_first->{$reason}}));
+		my $networks = subnet_matcher(@{$local_confirm_first->{$reason}}); 
+		if($networks->($ip_address)){
+			return ($reason, $f_local_config);
+		}
+	}
+
+	foreach my $reason (keys(%{$confirm_first})){
+		_debug ("Subnet matching confirm-first $reason: ".join("," , @{$confirm_first->{$reason}}));
+		my $networks = subnet_matcher(@{$confirm_first->{$reason}}); 
+		if($networks->($ip_address)){
+			return ($reason, $f_config);
+		}
+	}
+	return undef;
+}
+		
 
 # Takes a whitelist as returned by the config (a hashref, with IP 
 # addresses/CIDR masks as keys, reasons as values) and returns as 
