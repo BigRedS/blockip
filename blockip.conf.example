@@ -7,6 +7,8 @@
 #block_command = ip route add blackhole %ip_address%
 #unblock_command = ip route del blackhole %ip_address%
 
+cache_dir = /var/cache/blockip
+
 # The whitelist and confirm-before list must come *after* any other directives.
 #
 # Each is a list of elements of the form
@@ -18,14 +20,13 @@
 # delete this address.
 
 # Whitelisted addresses may not be blocked. RFC1918 and loopback ones are 
-# hardcoded into the script/
+# hardcoded into the script:
 #  [whitelist]
-#  example.com = Example domain
 #  1.2.3.4 = Example address
 
 # Confirm-first addresses may be blocked, but the user will first be prompted
 # with the label given here, in case that makes them change their mind. They
-# are intended for things like search engine bots.
-[confirm-first]
-googlebot.com = Google Bot
+# are intended for things like search engine bots:
+#  [confirm-first]
+#  216.58.213.100 = Google Bot
 

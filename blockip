@@ -9,6 +9,8 @@ use Data::Dumper;
 use Getopt::Long;
 use Socket qw( inet_ntoa );
 use Sys::Syslog qw(:standard :macros);
+use File::Copy qw( move );
+use Fcntl qw( :flock );
 
 use Net::Subnet;  # libnet-subnet-perl
 use Config::Tiny;  # libconfig-tiny-perl 
@@ -38,7 +40,7 @@ unless(-f $f_local_config){
 }
 
 my $help;
-my ($unblock,$noprompt,$debug,$iptables,$dry_run,$config_help,$example_config) = undef;
+my ($unblock,$noprompt,$debug,$iptables,$dry_run,$config_help,$example_config,$list) = undef;
 
 GetOptions(
 	"config-file=s" => \$f_config,
@@ -47,6 +49,7 @@ GetOptions(
 	"example-config"=> \$example_config,
 	"help|h"        => \$help,
 	"iptables"      => \$iptables,
+	"list-blocks|l" => \$list,
 	"no-prompt"     => \$noprompt,
 	"unblock"       => \$unblock,
 ) or die ("Error parsing command-line options");
@@ -63,6 +66,7 @@ if($example_config){
 openlog("blockip", "nofatal,pid", LOG_DAEMON);
 my $ip_address = shift;
 syslog("INFO", "Command line: $command_line");
+
 
 _debug("Config file: $f_config");
 my $config;
@@ -83,6 +87,18 @@ if(-f $f_local_config){
 if($iptables){
 	$config->{'_'}->{'block_command'}   = 'iptables -A INPUT -s %ip_address% -j DROP';
 	$config->{'_'}->{'unblock_command'} = 'iptables -D INPUT -s %ip_address% -j DROP';
+}
+
+my ($cachefile);
+if($local_config->{'_'}->{cache_dir}){
+	die "Cache dir '".$local_config->{'_'}->{cache_dir}."' does not exist" unless -d $local_config->{'_'}->{cache_dir};
+	$cachefile = $local_config->{'_'}->{cache_dir}."/blockip.cache";
+	$cachefile =~ s#//#/#g;
+}
+
+if($list){
+	dump_cache($cachefile);
+	exit;
 }
 
 if($unblock){
@@ -154,6 +170,8 @@ sub block_address{
 		syslog("INFO", "FAILED. Aborting");
 		print "Command ($cmd) FAILED\n";
 		print $output;
+	}else{
+		add_to_cache($cachefile, $ip_address);
 	}
 	syslog("INFO", "Exited: $?");
 }
@@ -180,6 +198,8 @@ sub unblock_address{
 		syslog("INFO", "FAILED. Aborting");
 		print "Command ($cmd) FAILED\n";
 		print $output;
+	}else{
+		remove_from_cache($cachefile, $ip_address);
 	}
 	syslog("INFO", "Exited: $?");
 }
@@ -274,6 +294,64 @@ sub resolve_whitelist{
 	return $return;
 }
 
+sub add_to_cache{
+	my $cachefile = shift;
+	my $ip_address = shift;
+
+	return unless $cachefile;
+
+	my $f_temp = $cachefile.".temp";
+	open (my $fh_temp, ">", $f_temp) or die ("Failed to open cache temp file '$f_temp' for writing: $!");
+	flock($fh_temp, LOCK_EX) or die ("Failed to get exclusive lock on cache temp file '$f_temp': $!");
+
+	open(my $fh_in, "<", $cachefile) or die ("Failed to open cache file '$cachefile' for reading: $!");
+	while (my $line = readline($fh_in)){
+		print $fh_temp $line;
+	}
+	print $fh_temp time(), ":", $ip_address, "\n";
+	close($fh_in) or die ("Failed to close cache file '$cachefile' :$!");
+
+	move($f_temp, $cachefile);
+	close($fh_temp) or die ("Failed to close cache temp file '$f_temp' :$!");
+}
+
+sub remove_from_cache{
+	my $cachefile = shift;
+	my $ip_address = shift;
+
+	return unless $cachefile;
+
+	my $f_temp = $cachefile.".temp";
+	open (my $fh_temp, ">", $f_temp) or die ("Failed to open cache temp file '$f_temp' for writing: $!");
+	flock($fh_temp, LOCK_EX) or die ("Failed to get exclusive lock on cache temp file '$f_temp': $!");
+
+	open(my $fh_in, "<", $cachefile) or die ("Failed to open cache file '$cachefile' for reading: $!");
+	while (my $line = readline($fh_in)){
+		print $fh_temp $line unless $line =~ m/^\d+:$ip_address$/;
+	}
+	close($fh_in) or die ("Failed to close cache file '$cachefile' :$!");
+
+	move($f_temp, $cachefile);
+	close($fh_temp) or die ("Failed to close cache temp file '$f_temp' :$!");
+}
+
+sub dump_cache{
+	my $cachefile = shift;
+
+	unless( -f $cachefile ){
+		print "Cachefile at '$cachefile' doesn't exist. Is cache_dir set properly? Has anything been blocked?";
+		return;
+	}
+
+	open(my $fh, "<", $cachefile);
+	while (my $line = readline($fh)){
+		chomp($line);
+		my ($time,$address,$expiry) = split(m/:/, $line);
+		print "[".localtime($time)."] $address\n";
+	}
+}
+
+
 sub _error{
 	my $message = shift;
 	chomp($message);
@@ -306,6 +384,7 @@ Options:
     --example-config        print out an example blockip.conf
     --help                  see this help
     --iptables              use iptables for block/unblock (overrides config file)
+    --list                  print known blocks
     --config-help           see config file help
     --no-prompt             don't prompt for confirmation (for scripts)
     --unblock               unblock IP address
@@ -337,6 +416,8 @@ print STDOUT << "EOF";
 
 #block_command = ip route add blackhole %ip_address%
 #unblock_command = ip route del blackhole %ip_address%
+
+cache_dir = /var/cache/blockip
 
 # The whitelist and confirm-before list must come *after* any other directives.
 #

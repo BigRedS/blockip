@@ -14,6 +14,7 @@ Options:
     --example-config        print out an example blockip.conf
     --help                  see this help
     --iptables              use iptables for block/unblock (overrides config file)
+    --list                  print known blocks
     --config-help           see config file help
     --no-prompt             don't prompt for confirmation (for scripts)
     --unblock               unblock IP address
