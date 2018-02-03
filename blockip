@@ -82,8 +82,11 @@ syslog("INFO", "Command line: $command_line");
 
 if($unblock){
 	syslog("INFO", "Unblocking '$ip_address'");
-	unblock_address($ip_address);
-	exit;
+	if(unblock_address($ip_address)){
+		exit 0;
+	}else{
+		exit 1;
+	}
 }
 
 _debug("Resolving static whitelists");
@@ -122,8 +125,11 @@ if(($reason,$file) = check_confirm_firsts($ip_address) and $reason =~ m/.+/){
 
 # Block the address:
 syslog("INFO", "Blocking '$ip_address'");
-block_address($ip_address);
-syslog("INFO", "Exiting");
+if(block_address($ip_address)){
+	exit 0;
+}else{
+	exit 1;
+}
 # # #
 # #
 #
@@ -147,13 +153,21 @@ sub block_address{
 	my $output = `$cmd 2>&1`;
 	my $retval = $?>>8;
 
+	chomp($output);
+	_debug("Output: $output");
+
 	if($retval != 0){
-		syslog("INFO", "FAILED. Aborting");
-		print "Command ($cmd) FAILED\n";
-		print $output;
-	}else{
-		add_to_cache($cachefile, $ip_address);
+		if($output eq 'RTNETLINK answers: File exists'){
+			syslog("INFO", "Already blocked");
+			print "Address already blocked\n";
+			return 1;
+		}else{
+			syslog("INFO", "FAILED. Aborting");
+			print "Command ($cmd) FAILED:\n $output\n";
+			return undef;
+		}
 	}
+	add_to_cache($cachefile, $ip_address);
 	_debug("Exited: $retval");
 	syslog("INFO", "Exited: $retval");
 }
@@ -177,13 +191,22 @@ sub unblock_address{
 	}
 	my $output = `$cmd 2>&1`;
 	my $retval = $?>>8;
+
+	chomp($output);
+	_debug("Output: $output");
+
 	if($retval != 0){
-		syslog("INFO", "FAILED. Aborting");
-		print "Command ($cmd) FAILED\n";
-		print $output;
-	}else{
-		remove_from_cache($cachefile, $ip_address);
+		if($output eq 'RTNETLINK answers: No such process'){
+			syslog("INFO", "Address not blocked");
+			print "Address not blocked\n";
+			return 1;
+		}else{
+			syslog("INFO", "FAILED. Aborting");
+			print "Command ($cmd) FAILED:\n $output\n";
+			return undef;
+		}
 	}
+	remove_from_cache($cachefile, $ip_address);
 	_debug("Exited: $retval");
 	syslog("INFO", "Exited: $retval");
 }
