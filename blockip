@@ -30,6 +30,13 @@ if(-f './blockip.conf'){
 	$f_local_config = '/etc/blockip/blockip.conf';
 }
 
+unless(-f $f_local_config){
+	print STDERR "Local config file not found (checked ./blockip.conf and $f_local_config)\n";
+	print STDERR "Please create one, using\n\n";
+	print STDERR "    $0 --example-config > $f_local_config\n\n";
+	print STDERR "Or similar; see --help output for more information\n";
+}
+
 my $help;
 my ($unblock,$noprompt,$debug,$iptables,$dry_run,$config_help,$example_config) = undef;
 
@@ -341,16 +348,15 @@ print STDOUT << "EOF";
 # delete this address.
 
 # Whitelisted addresses may not be blocked. RFC1918 and loopback ones are 
-# hardcoded into the script/
+# hardcoded into the script:
 #  [whitelist]
-#  example.com = Example domain
 #  1.2.3.4 = Example address
 
 # Confirm-first addresses may be blocked, but the user will first be prompted
 # with the label given here, in case that makes them change their mind. They
-# are intended for things like search engine bots.
-[confirm-first]
-googlebot.com = Google Bot
+# are intended for things like search engine bots:
+#  [confirm-first]
+#  216.58.213.100 = Google Bot
 
 EOF
 }
