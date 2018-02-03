@@ -86,10 +86,10 @@ if($unblock){
 	exit;
 }
 
-# Get together some lists of addresses to refuse to block:
-# Whitelists from the config file:
+_debug("Resolving static whitelists");
 my $whitelist     = resolve_whitelist($config->{'whitelist'});
 my $confirm_first = resolve_whitelist($config->{'confirm-first'});
+_debug("Resolving local whitelists");
 my $local_whitelist     = resolve_whitelist($local_config->{'whitelist'});
 my $local_confirm_first = resolve_whitelist($local_config->{'confirm-first'});
 
@@ -145,14 +145,17 @@ sub block_address{
 		return;
 	}
 	my $output = `$cmd 2>&1`;
-	if($? != 0){
+	my $retval = $?>>8;
+
+	if($retval != 0){
 		syslog("INFO", "FAILED. Aborting");
 		print "Command ($cmd) FAILED\n";
 		print $output;
 	}else{
 		add_to_cache($cachefile, $ip_address);
 	}
-	syslog("INFO", "Exited: $?");
+	_debug("Exited: $retval");
+	syslog("INFO", "Exited: $retval");
 }
 
 sub unblock_address{
@@ -173,19 +176,22 @@ sub unblock_address{
 		return;
 	}
 	my $output = `$cmd 2>&1`;
-	if($? != 0){
+	my $retval = $?>>8;
+	if($retval != 0){
 		syslog("INFO", "FAILED. Aborting");
 		print "Command ($cmd) FAILED\n";
 		print $output;
 	}else{
 		remove_from_cache($cachefile, $ip_address);
 	}
-	syslog("INFO", "Exited: $?");
+	_debug("Exited: $retval");
+	syslog("INFO", "Exited: $retval");
 }
 
 # Is passed an IP address, checks all the whitelists for its presence. 
 sub check_whitelists{
 	my $ip_address = shift;
+	_debug("Checking $ip_address against whitelists");
 
 	if($ip_address eq ""){
 		return ("You didn't specify an IP address. Perhaps see --help output?");
@@ -205,17 +211,18 @@ sub check_whitelists{
 	if($loopback->($ip_address)){
 		return("$ip_address is a loopback address. Do not block it.");
 	}
-
-	foreach my $reason (keys(%{$local_whitelist})){
-		_debug ("Subnet matching $reason: ". join(",", @{$local_whitelist->{$reason}}));
+	foreach my $reason (sort(keys(%{$local_whitelist}))){
+		_debug("  Local whitelist: $reason");
+		_debug(join("\n    ", @{$local_whitelist->{$reason}}));
 		my $networks = subnet_matcher(@{$local_whitelist->{$reason}}); 
 		if($networks->($ip_address)){
 			return "$ip_address is whitelisted, as '$reason'";
 		}
 	}
 
-	foreach my $reason (keys(%{$whitelist})){
-		_debug ("Subnet matching $reason: ". join(",", @{$whitelist->{$reason}}));
+	foreach my $reason (sort(keys(%{$whitelist}))){
+		_debug("  Static whitelist: $reason");
+		_debug("    ".join("\n    ", @{$whitelist->{$reason}}));
 		my $networks = subnet_matcher(@{$whitelist->{$reason}}); 
 		if($networks->($ip_address)){
 			return "$ip_address is whitelisted, as '$reason'";
@@ -228,8 +235,10 @@ sub check_whitelists{
 
 sub check_confirm_firsts{
 	my $ip_address = shift;
+	_debug("Checking $ip_address against confirm-first list");
 	foreach my $reason (keys(%{$local_confirm_first})){
-		_debug ("Subnet matching local confirm-first $reason: ".join("," , @{$local_confirm_first->{$reason}}));
+		_debug("  Local confirm-first: $reason");
+		_debug("    ".join("\n    ", @{$local_confirm_first->{$reason}}));
 		my $networks = subnet_matcher(@{$local_confirm_first->{$reason}}); 
 		if($networks->($ip_address)){
 			return ($reason, $f_local_config);
@@ -237,7 +246,8 @@ sub check_confirm_firsts{
 	}
 
 	foreach my $reason (keys(%{$confirm_first})){
-		_debug ("Subnet matching confirm-first $reason: ".join("," , @{$confirm_first->{$reason}}));
+		_debug("  Static confirm-first: $reason");
+		_debug("    ".join("\n    ", @{$confirm_first->{$reason}}));
 		my $networks = subnet_matcher(@{$confirm_first->{$reason}}); 
 		if($networks->($ip_address)){
 			return ($reason, $f_config);
@@ -257,9 +267,9 @@ sub resolve_whitelist{
 	foreach my $ip_address (keys(%{$whitelist})){
 		my $reason = $whitelist->{$ip_address};
 		next if ($ip_address =~ m/^\d+\.\d+\.\d+\.\d+/);
-		_debug("Resolving whitelisted domain '$ip_address'");
 		my @addresses = gethostbyname($ip_address);
 		@addresses = map { inet_ntoa($_) } @addresses[ 4 .. $#addresses ];
+		_debug("  Resolved $ip_address to ".join(" ", @addresses));
 		foreach my $record ( @addresses ) {
 			$whitelist->{$record} = $reason;
 		}
