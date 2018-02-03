@@ -55,7 +55,7 @@ if(-f $f_config){
 	print "No config file, carrying on with defaults\n";
 }
 
-_debug("Local config file: $f_config");
+_debug("Local config file: $f_local_config");
 my $local_config = {};
 if(-f $f_local_config){
 	$local_config = Config::Tiny->read( $f_local_config ) or die ("Error reading config file '$f_local_config' : ".Config::Tiny->errstr);
