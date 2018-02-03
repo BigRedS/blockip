@@ -11,26 +11,14 @@ use Socket qw( inet_ntoa );
 use Sys::Syslog qw(:standard :macros);
 use File::Copy qw( move );
 use Fcntl qw( :flock );
-
 use Net::Subnet;  # libnet-subnet-perl
 use Config::Tiny;  # libconfig-tiny-perl 
 
 my $command_line = join(" ", $0, @ARGV);
 
-# This is the package-supplied one
-my $f_config;
-if(-f './blockip.static'){
-	$f_config = './blockip.static';
-}else{
-	$f_config = '/etc/blockip/blockip.static';
-}
-# This is the home-made one
-my $f_local_config;
-if(-f './blockip.conf'){
-	$f_local_config = './blockip.conf';
-}else{
-	$f_local_config = '/etc/blockip/blockip.conf';
-}
+# f_config is package-supplied, f_local_config is edited to suit the host:
+my $f_config = -f './blockip.static' ? './blockip.static' : '/etc/blockip/blockip.static';
+my $f_local_config = -f './blockip.conf' ? './blockip.conf' : '/etc/blockip/blockip.conf';
 
 unless(-f $f_local_config){
 	print STDERR "Local config file not found (checked ./blockip.conf and $f_local_config)\n";
@@ -39,9 +27,7 @@ unless(-f $f_local_config){
 	print STDERR "Or similar; see --help output for more information\n";
 }
 
-my $help;
-my ($unblock,$noprompt,$debug,$iptables,$dry_run,$config_help,$example_config,$list) = undef;
-
+my ($help,$unblock,$noprompt,$debug,$iptables,$dry_run,$config_help,$example_config,$list) = undef;
 GetOptions(
 	"config-file=s" => \$f_config,
 	"debug"         => \$debug,
@@ -53,37 +39,27 @@ GetOptions(
 	"no-prompt"     => \$noprompt,
 	"unblock"       => \$unblock,
 ) or die ("Error parsing command-line options");
+usage() if $help;
+example_config() if $example_config;
 
-if($help){
-	usage();
-	exit;
-}
-if($example_config){
-	example_config();
-	exit;
-}
-
-openlog("blockip", "nofatal,pid", LOG_DAEMON);
 my $ip_address = shift;
-syslog("INFO", "Command line: $command_line");
 
 
 _debug("Config file: $f_config");
-my $config;
-if($f_config eq '' || ! -f $f_config){
-	print "No config file, carrying on with defaults\n";
-	$config = {};
-}else{
+my $config = {};
+if(-f $f_config){
 	$config = Config::Tiny->read( $f_config ) or die ("Error reading config file '$f_config' : ".Config::Tiny->errstr);
+}else{
+	print "No config file, carrying on with defaults\n";
 }
-my $local_config = {};
+
 _debug("Local config file: $f_config");
+my $local_config = {};
 if(-f $f_local_config){
 	$local_config = Config::Tiny->read( $f_local_config ) or die ("Error reading config file '$f_local_config' : ".Config::Tiny->errstr);
 }
 
-# If we're passed --iptables, then the block_command is overriden to an 
-# iptables invocation.
+# If we're passed --iptables, then the block_command is overriden to an iptables invocation.
 if($iptables){
 	$config->{'_'}->{'block_command'}   = 'iptables -A INPUT -s %ip_address% -j DROP';
 	$config->{'_'}->{'unblock_command'} = 'iptables -D INPUT -s %ip_address% -j DROP';
@@ -100,6 +76,9 @@ if($list){
 	dump_cache($cachefile);
 	exit;
 }
+
+openlog("blockip", "nofatal,pid", LOG_DAEMON);
+syslog("INFO", "Command line: $command_line");
 
 if($unblock){
 	syslog("INFO", "Unblocking '$ip_address'");
@@ -393,6 +372,9 @@ The unblocking may not work; it assumes that the IP address has been blocked
 in the same way as blockip is configured to (see 'block_command' and 
 'unblock_command' in the config file).
 
+'known' blocks are stored in a cache file, kept in the cache_dir set in the 
+local config file; where this is unset no record is kept.
+
 
 blockip has two configuration files. blockip.static is provided by the 
 package manager, and should not be edited by anybody else. It contains just a 
@@ -404,6 +386,7 @@ options. It is created on package installation. You can recreate it with
 blockip --example-config > /etc/blockip/blockip.conf
 
 EOF
+exit;
 }
 
 sub example_config{
@@ -441,4 +424,5 @@ cache_dir = /var/cache/blockip
 #  216.58.213.100 = Google Bot
 
 EOF
+exit;
 }
