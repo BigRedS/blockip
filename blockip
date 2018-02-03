@@ -113,7 +113,8 @@ if(my $message = check_whitelists($ip_address)){
 
 my $input;
 
-if(my ($reason,$file) = check_confirm_firsts($ip_address)){
+my($reason,$file);
+if(($reason,$file) = check_confirm_firsts($ip_address) and $reason =~ m/.+/){
 	print "Address '$ip_address' is listed as confirm-first in $file\n";
 	print "Reason given:\n  $reason\n\n";
 	print "Are you sure you want to block this address? [Y/n] ";
