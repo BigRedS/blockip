@@ -27,7 +27,8 @@ unless(-f $f_local_config){
 	print STDERR "Or similar; see --help output for more information\n";
 }
 
-my ($help,$unblock,$noprompt,$debug,$iptables,$dry_run,$config_help,$example_config,$list) = undef;
+my ($help,$unblock,$noprompt,$debug,$iptables,$dry_run,$config_help,$example_config) = undef;
+my ($list,$when) = undef;
 GetOptions(
 	"config-file=s" => \$f_config,
 	"debug"         => \$debug,
@@ -38,6 +39,7 @@ GetOptions(
 	"list-blocks|l" => \$list,
 	"no-prompt"     => \$noprompt,
 	"unblock"       => \$unblock,
+	"when"          => \$when,
 ) or die ("Error parsing command-line options");
 usage() if $help;
 example_config() if $example_config;
@@ -72,10 +74,8 @@ if($local_config->{'_'}->{cache_dir}){
 	$cachefile =~ s#//#/#g;
 }
 
-if($list){
-	dump_cache($cachefile);
-	exit;
-}
+get_block($cachefile,$ip_address)  if $when;
+dump_cache($cachefile) if $list;
 
 openlog("blockip", "nofatal,pid", LOG_DAEMON);
 syslog("INFO", "Command line: $command_line");
@@ -347,20 +347,37 @@ sub remove_from_cache{
 	close($fh_temp) or die ("Failed to close cache temp file '$f_temp' :$!");
 }
 
+sub get_block{
+	my $cachefile = shift;
+	my $address = shift;
+	my @cache = get_cache($cachefile);
+	foreach my $line(@cache){
+		if($line->{address} eq $address){
+			print "[".localtime($line->{time})."] ".$line->{address}."\n";
+		}
+	}
+	exit;
+}
+
 sub dump_cache{
 	my $cachefile = shift;
-
-	unless( -f $cachefile ){
-		print "Cachefile at '$cachefile' doesn't exist. Is cache_dir set properly? Has anything been blocked?";
-		return;
+	my @cache = get_cache($cachefile);
+	foreach my $line (@cache){
+		print "[".localtime($line->{time})."] ".$line->{address}."\n";
 	}
+	exit;
+}
 
+sub get_cache{
+	my $cachefile = shift;
 	open(my $fh, "<", $cachefile);
+	my @lines;
 	while (my $line = readline($fh)){
 		chomp($line);
 		my ($time,$address,$expiry) = split(m/:/, $line);
-		print "[".localtime($time)."] $address\n";
+		push(@lines, {time => $time, address=> $address, expiry => $expiry});
 	}
+	return @lines;
 }
 
 
