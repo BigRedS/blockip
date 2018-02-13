@@ -312,6 +312,12 @@ sub add_to_cache{
 
 	return unless $cachefile;
 
+	unless(-f $cachefile){
+		open(my $fh, ">", $cachefile) or die ("Failed to create new cache file '$cachefile' : $!");
+		print $fh '';
+		close($fh);
+	}
+
 	my $f_temp = $cachefile.".temp";
 	open (my $fh_temp, ">", $f_temp) or die ("Failed to open cache temp file '$f_temp' for writing: $!");
 	flock($fh_temp, LOCK_EX) or die ("Failed to get exclusive lock on cache temp file '$f_temp': $!");
@@ -332,6 +338,8 @@ sub remove_from_cache{
 	my $ip_address = shift;
 
 	return unless $cachefile;
+
+	return unless (-f $cachefile);
 
 	my $f_temp = $cachefile.".temp";
 	open (my $fh_temp, ">", $f_temp) or die ("Failed to open cache temp file '$f_temp' for writing: $!");
