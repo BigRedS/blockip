@@ -14,6 +14,8 @@ use Fcntl qw( :flock );
 use Net::Subnet;  # libnet-subnet-perl
 use Config::Tiny;  # libconfig-tiny-perl 
 
+my $version = '0.20180315';
+
 my $command_line = join(" ", $0, @ARGV);
 
 # f_config is package-supplied, f_local_config is edited to suit the host:
@@ -27,7 +29,7 @@ unless(-f $f_local_config){
 	print STDERR "Or similar; see --help output for more information\n";
 }
 
-my ($help,$unblock,$noprompt,$debug,$iptables,$dry_run,$config_help,$example_config) = undef;
+my ($help,$unblock,$noprompt,$debug,$iptables,$dry_run,$config_help,$example_config,$show_version) = undef;
 my ($list,$when) = undef;
 GetOptions(
 	"config-file=s" => \$f_config,
@@ -40,7 +42,9 @@ GetOptions(
 	"no-prompt"     => \$noprompt,
 	"unblock"       => \$unblock,
 	"when"          => \$when,
+	"version"       => \$show_version,
 ) or die ("Error parsing command-line options");
+print "blockip version $version\n" and exit if $show_version;
 usage() if $help;
 example_config() if $example_config;
 
